@@ -1,0 +1,219 @@
+package au.com.cfs.winged.servlets;
+
+import com.day.cq.dam.api.Asset;
+import com.day.cq.mailer.MessageGateway;
+import com.day.cq.mailer.MessageGatewayService;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.mail.Email;
+import org.apache.commons.mail.EmailException;
+import org.apache.commons.mail.HtmlEmail;
+import org.apache.sling.api.SlingHttpServletRequest;
+import org.apache.sling.api.SlingHttpServletResponse;
+import org.apache.sling.api.resource.Resource;
+import org.apache.sling.api.resource.ResourceResolver;
+import org.apache.sling.api.servlets.SlingAllMethodsServlet;
+import org.json.JSONException;
+import org.json.JSONObject;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import javax.script.ScriptContext;
+import javax.servlet.Servlet;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Properties;
+
+import static org.apache.sling.api.servlets.ServletResolverConstants.SLING_SERVLET_METHODS;
+import static org.apache.sling.api.servlets.ServletResolverConstants.SLING_SERVLET_PATHS;
+@Component(
+        service = { Servlet.class },
+        property = {
+                SLING_SERVLET_PATHS + "=/bin/sendemail",
+                SLING_SERVLET_METHODS + "=GET,POST"
+        }
+)
+public class SendEmailServlet extends SlingAllMethodsServlet {
+
+  private static Logger log = LoggerFactory.getLogger(SendEmailServlet.class);
+
+  private static String ASSETPATH_EMAIL_PROPERTIES = "/content/dam/cfs-winged/documents/email/email.properties";
+
+  @Reference
+  private MessageGatewayService messageGatewayService;
+
+  /***
+   * This method gets the email metadata from email.properties file and calls sendEmail() to trigger email
+   * @param request
+   * @param response
+   * @throws IOException
+   */
+  @Override
+  protected void doGet(SlingHttpServletRequest request, SlingHttpServletResponse response) throws IOException {
+    log.info("SendEmailServlet doGet Started.....");
+    response.getWriter().write("1\n");
+    ResourceResolver resolver = null;
+    response.getWriter().write("2\n");
+    JSONObject jsonResponse = new JSONObject();
+    boolean sent = false;
+    try {
+      response.getWriter().write("3\n");
+      resolver = request.getResourceResolver();
+      String subject = StringUtils.EMPTY;
+      String body = StringUtils.EMPTY;
+      String emailTo = StringUtils.EMPTY;
+
+      if (resolver != null) {
+        response.getWriter().write("4\n");
+        Resource resource = resolver.getResource(ASSETPATH_EMAIL_PROPERTIES);
+        response.getWriter().write("5\n");
+        if (resource != null) {
+          response.getWriter().write("6\n");
+          Asset asset = resource.adaptTo(Asset.class);
+          InputStream inputStream = asset.getOriginal().getStream();
+          response.getWriter().write("7\n");
+          if (inputStream != null) {
+            response.getWriter().write("8\n");
+            Properties properties = new Properties();
+            response.getWriter().write("9\n");
+            properties.load(inputStream);
+            response.getWriter().write("10\n");
+            subject = properties.getProperty("email.subject");
+            response.getWriter().write("11\n");
+            log.info("email.subject->" + subject);
+            response.getWriter().write("\nemail.subject->" + subject);
+            body = properties.getProperty("email.body");
+            response.getWriter().write("12\n");
+            log.info("email.body->" + body);
+            response.getWriter().write("\nemail.body->" + body);
+            response.getWriter().write("13\n");
+
+            emailTo = properties.getProperty("email.to");
+            response.getWriter().write("14\n");
+            response.getWriter().write("\nemail.to->" + emailTo);
+            log.info("email.to->" + emailTo);
+
+          }
+        }
+      }
+
+
+      String[] recipients = emailTo.split(";");
+      response.getWriter().write("15\n");
+      response.getWriter().write("Before sending email\n");
+	  log.info("Before sending email");
+      response.getWriter().write("\nemail.to->" + emailTo);
+      sendEmail(subject,
+              body, recipients);
+      response.getWriter().write("\nAfter sending email");
+      log.info("After sending email");
+      response.getWriter().write("\nAfter sending email");
+	  sent = true;
+      response.getWriter().write("16\n");
+	  log.info("Before result.....");
+      response.getWriter().write("\nBefore result.....\n");
+      
+	 
+      response.getWriter().write("17\n");
+      response.getWriter().write(jsonResponse.toString());
+
+    } catch (Exception e) {
+      log.error("Exception occurrend in SendEmailServlet:doPost() {}" + e);
+      e.printStackTrace();
+    }
+  }
+
+
+  /***
+   * This method gets the email metadata from email.properties file and calls sendEmail() to trigger email
+   * @param request
+   * @param response
+   * @throws IOException
+   */
+  @Override
+  protected void doPost(SlingHttpServletRequest request, SlingHttpServletResponse response) throws IOException {
+    log.info("SendEmailServlet doPost Started");
+    ResourceResolver resolver = null;
+    JSONObject jsonResponse = new JSONObject();
+    boolean sent = false;
+    try {
+      resolver = request.getResourceResolver();
+      String subject = StringUtils.EMPTY;
+      String body = StringUtils.EMPTY;
+      String emailTo = StringUtils.EMPTY;
+
+      if (resolver != null) {
+        Resource resource = resolver.getResource(ASSETPATH_EMAIL_PROPERTIES);
+
+        if (resource != null) {
+          Asset asset = resource.adaptTo(Asset.class);
+          InputStream inputStream = asset.getOriginal().getStream();
+          if (inputStream != null) {
+            Properties properties = new Properties();
+            properties.load(inputStream);
+            subject = properties.getProperty("email.subject");
+            log.info("email.subject->" + subject);
+            body = properties.getProperty("email.body");
+            log.info("email.body->" + body);
+            emailTo = properties.getProperty("email.to");
+            log.info("email.to->" + emailTo);
+
+          }
+        }
+      }
+
+
+      String[] recipients = emailTo.split(";");
+      sendEmail(subject,
+              body, recipients);
+      sent = true;
+      jsonResponse.put("result", sent ? "done" : "something went wrong");
+
+
+    } catch (JSONException e) {
+      log.error("JSONException occurrend in SendEmailServlet:doPost() {}" + e);
+      e.printStackTrace();
+    } catch (Exception e) {
+      log.error("Exception occurrend in SendEmailServlet:doPost() {}" + e);
+      e.printStackTrace();
+    }
+  }
+
+
+  /***
+   * This method sets the email subject, body, recipients and sends email using the Email Configuration
+   * @param subjectLine
+   * @param msgBody
+   * @param recipients
+   * @throws EmailException
+   */
+  private void sendEmail(String subjectLine, String msgBody, String[] recipients) throws EmailException {
+    try {
+					ScriptContext response = null;
+					response.getWriter().write("\nInside sendEmail().....\n");
+      Email email = new HtmlEmail();
+      for (String recipient : recipients) {
+        email.addTo(recipient);
+      }
+      email.setSubject(subjectLine);
+      email.setMsg(msgBody);
+	response.getWriter().write("\nBefore messageGateway.....\n");    
+      MessageGateway<Email> messageGateway = messageGatewayService.getGateway(HtmlEmail.class);
+	    response.getWriter().write("\nAfter messageGateway.....\n");
+      if (messageGateway != null) {
+	response.getWriter().write("\nSending out email.....\n");      
+        log.info("Sending out email");
+        messageGateway.send((Email) email);
+	response.getWriter().write("\nEmail sent successfully.....\n");      
+        log.info("Email sent successfully");
+      } else {
+        log.error("The message gateway could not be retrieved.");
+      }
+    }
+    catch (Exception e) {
+	log.error("Exception occurrend in SendEmailServlet:sendEmail() {}" + e);
+      e.printStackTrace();
+    }
+  }
+}
