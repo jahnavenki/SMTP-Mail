@@ -1,0 +1,4 @@
+email.subject=Workflow is pending for your approval
+email.body=Please check the workflow as it's pending for your approval.
+email.to=venkateswara.goud.lakkasani@cfs.com.au;kirill.frolov@cfs.com.au
+/content/dam/cfs-winged/documents/email/email.properties
