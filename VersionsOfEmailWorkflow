@@ -112,3 +112,38 @@ public class EmailWorkflow implements WorkflowProcess {
     }
   }
 }
+
+
+
+.................................
+ private String[] getRecipients(String emailTo, ResourceResolver resolver) {
+        // Split recipients and handle group logic
+        List<String> recipientList = new ArrayList<>();
+        String[] emails = emailTo.split(";");
+        for (String email : emails) {
+            if (email.startsWith("group:")) {
+                String groupName = email.substring(6);
+                try {
+                    UserManager userManager = resolver.adaptTo(UserManager.class);
+                    Group group = (Group) userManager.getAuthorizable(groupName);
+                    if (group != null) {
+                        Iterator<Authorizable> members = group.getMembers();
+                        while (members.hasNext()) {
+                            Authorizable member = members.next();
+                            if (member instanceof User) {
+                                String memberEmail = member.getProperty("profile/email")[0].getString();
+                                if (StringUtils.isNotBlank(memberEmail)) {
+                                    recipientList.add(memberEmail);
+                                }
+                            }
+                        }
+                    }
+                } catch (RepositoryException e) {
+                    logger.error("Error while fetching recipients from group: {}", groupName, e);
+                }
+            } else {
+                recipientList.add(email);
+            }
+        }
+        return recipientList.toArray(new String[0]);
+    }
