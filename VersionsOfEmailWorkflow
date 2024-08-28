@@ -1,0 +1,114 @@
+@Component(service = WorkflowProcess.class,
+        property = {"process.label=Email Workflow Process" })
+public class EmailWorkflow implements WorkflowProcess {
+
+  protected final Logger logger = LoggerFactory.getLogger(EmailWorkflow.class);
+
+  private static final String ASSETPATH_EMAIL_PROPERTIES = "/content/dam/cfs-winged/documents/email/email.properties";
+
+  @Reference
+  private MessageGatewayService messageGatewayService;
+
+  @Reference
+  private ResourceResolverFactory resolverFactory;
+
+  public void execute(WorkItem workItem, WorkflowSession wfSession, MetaDataMap metaDataMap) throws WorkflowException {
+    logger.info("Email Workflow Started");
+    ResourceResolver resolver = null;
+    JSONObject jsonResponse = new JSONObject();
+    boolean sent = false;
+    try {
+      resolver = wfSession.adaptTo(ResourceResolver.class);
+      String subject = StringUtils.EMPTY;
+      String body = StringUtils.EMPTY;
+      String emailTo = StringUtils.EMPTY;
+
+      if (resolver != null) {
+        Resource resource = resolver.getResource(ASSETPATH_EMAIL_PROPERTIES);
+        if (resource != null) {
+          Asset asset = resource.adaptTo(Asset.class);
+          InputStream inputStream = asset.getOriginal().getStream();
+          if (inputStream != null) {
+            Properties properties = new Properties();
+            properties.load(inputStream);
+            subject = properties.getProperty("email.subject");
+            logger.info("email.subject->" + subject);
+            body = properties.getProperty("email.body");
+            logger.info("email.body->" + body);
+            emailTo = properties.getProperty("email.to");
+            logger.info("email.to->" + emailTo);
+          }
+        }
+      }
+
+      // Build the full path with the domain
+      String domain = "https://yourdomain.com"; // Replace with your actual domain
+      String path = workItem.getWorkflowData().getPayload().toString();
+      String fullUrl = domain + path;
+      body += "\n\nPage URL: " + fullUrl;
+
+      // Handle user groups
+      String[] recipients = getRecipients(emailTo, resolver);
+      sendEmail(subject, body, recipients);
+      sent = true;
+      jsonResponse.put("result", sent ? "done" : "something went wrong");
+
+      logger.error("Payload path: {}", path);
+      String args = metaDataMap.get("PROCESS_ARGS", String.class);
+      logger.error("Process args: {}", args);
+
+    } catch (JSONException | IOException e) {
+      e.printStackTrace();
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
+  }
+
+  private String[] getRecipients(String emailTo, ResourceResolver resolver) {
+    // Split recipients and handle group logic
+    List<String> recipientList = new ArrayList<>();
+    String[] emails = emailTo.split(";");
+    for (String email : emails) {
+      if (email.startsWith("group:")) {
+        String groupName = email.substring(6);
+        Group group = resolver.getUserManager().getAuthorizable(groupName, Group.class);
+        if (group != null) {
+          Iterator<Authorizable> members = group.getMembers();
+          while (members.hasNext()) {
+            Authorizable member = members.next();
+            if (member instanceof User) {
+              String memberEmail = ((User) member).getProperty("profile/email");
+              if (StringUtils.isNotBlank(memberEmail)) {
+                recipientList.add(memberEmail);
+              }
+            }
+          }
+        }
+      } else {
+        recipientList.add(email);
+      }
+    }
+    return recipientList.toArray(new String[0]);
+  }
+
+  private void sendEmail(String subjectLine, String msgBody, String[] recipients) throws EmailException {
+    try {
+      Email email = new HtmlEmail();
+      for (String recipient : recipients) {
+        email.addTo(recipient);
+      }
+      email.setSubject(subjectLine);
+      email.setMsg(msgBody);
+      MessageGateway<Email> messageGateway = messageGatewayService.getGateway(HtmlEmail.class);
+      if (messageGateway != null) {
+        logger.info("Sending out email");
+        messageGateway.send(email);
+        logger.info("Email sent successfully");
+      } else {
+        logger.error("The message gateway could not be retrieved.");
+      }
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
+  }
+}
