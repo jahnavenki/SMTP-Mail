@@ -23,16 +23,12 @@ import org.apache.commons.mail.EmailException;
 import org.apache.commons.mail.SimpleEmail;
 import org.osgi.service.component.annotations.Component;
 import org.osgi.service.component.annotations.Reference;
-import org.osgi.service.component.annotations.Activate;
-import org.osgi.service.component.annotations.Modified;
-import org.osgi.service.component.annotations.Deactivate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.jackrabbit.api.security.user.Authorizable;
 import org.apache.jackrabbit.api.security.user.Group;
 import org.apache.jackrabbit.api.security.user.User;
 import org.apache.jackrabbit.api.security.user.UserManager;
-import org.apache.sling.api.resource.LoginException;
 import org.apache.sling.api.resource.ResourceResolver;
 import org.apache.sling.api.resource.ResourceResolverFactory;
 
@@ -55,13 +51,10 @@ public class SendEmailWorkflowProcess implements WorkflowProcess {
     @Reference
     private MessageGatewayService messageGatewayService;
 
-    @Reference
-    private ResourceResolverFactory resourceResolverFactory;
-
     private MessageGateway<Email> messageGateway;
 
     @Override
-    public void execute(final WorkItem item, final WorkflowSession wfsession, final MetaDataMap metaData) throws WorkflowException {
+    public void execute(final WorkItem item, final WorkflowSession wfSession, final MetaDataMap metaData) throws WorkflowException {
         this.emailRecipients = new ArrayList<>();
         final WorkflowData workflowData = item.getWorkflowData();
         final String payLoadPath = workflowData.getPayload().toString();
@@ -80,8 +73,8 @@ public class SendEmailWorkflowProcess implements WorkflowProcess {
             }
         }
         final Email email = new SimpleEmail();
-        try {
-            this.addUsersEmailRecipients(userGroup);
+        try (ResourceResolver resourceResolver = wfSession.adaptTo(ResourceResolver.class)) {
+            this.addUsersEmailRecipients(userGroup, resourceResolver);
 
             email.setTo(this.emailRecipients);
             email.setSubject("FCA AEM Workflow Notification : Page " + status);
@@ -105,14 +98,12 @@ public class SendEmailWorkflowProcess implements WorkflowProcess {
      * specific group.
      * 
      * @param userGroup this is userGroup
+     * @param resourceResolver this is resourceResolver
      * @throws WorkflowException this is WorkflowException
      */
-    private void addUsersEmailRecipients(final String userGroup) throws WorkflowException {
+    private void addUsersEmailRecipients(final String userGroup, final ResourceResolver resourceResolver) throws WorkflowException {
 
-        ResourceResolver resourceResolver = null;
         try {
-
-            resourceResolver = WorkflowHelper.getResourceResolverServiceMap(this.resourceResolverFactory);
             final UserManager userManager = resourceResolver.adaptTo(UserManager.class);
             java.util.Iterator<Authorizable> users;
             Object obj;
@@ -135,30 +126,11 @@ public class SendEmailWorkflowProcess implements WorkflowProcess {
                 }
             }
         } catch (final AddressException e) {
-            WorkflowHelper.closeResourceResolver(resourceResolver);
             LOG.error("Address Exception occured at execute method = " + e.getMessage(), e);
             throw new WorkflowException(e);
         } catch (final RepositoryException e) {
-            WorkflowHelper.closeResourceResolver(resourceResolver);
             LOG.error("Repository Exception occured at execute method = " + e.getMessage(), e);
             throw new WorkflowException(e);
-        } catch (final LoginException e) {
-            WorkflowHelper.closeResourceResolver(resourceResolver);
-            LOG.error("Login Exception occured at execute method = " + e.getMessage(), e);
-        } finally {
-            WorkflowHelper.closeResourceResolver(resourceResolver);
         }
-
-    }
-
-    @Activate
-    @Modified
-    protected void activate() {
-        // Activation logic can be added here if necessary
-    }
-
-    @Deactivate
-    protected void deactivate() {
-        // Deactivation logic can be added here if necessary
     }
 }
