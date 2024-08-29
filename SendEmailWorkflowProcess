@@ -1,0 +1,152 @@
+package com.crossregional.core.workflow.pqagen007;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import javax.jcr.Node;
+import javax.jcr.RepositoryException;
+import javax.mail.internet.AddressException;
+import javax.mail.internet.InternetAddress;
+
+import com.crossregional.core.workflow.helper.WorkflowHelper;
+import com.day.cq.mailer.MessageGateway;
+import com.day.cq.mailer.MessageGatewayService;
+import com.adobe.granite.workflow.WorkflowException;
+import com.adobe.granite.workflow.WorkflowSession;
+import com.adobe.granite.workflow.exec.WorkItem;
+import com.adobe.granite.workflow.exec.WorkflowData;
+import com.adobe.granite.workflow.exec.WorkflowProcess;
+import com.adobe.granite.workflow.metadata.MetaDataMap;
+
+import org.apache.commons.mail.Email;
+import org.apache.commons.mail.EmailException;
+import org.apache.commons.mail.SimpleEmail;
+import org.apache.felix.scr.annotations.Component;
+import org.apache.felix.scr.annotations.Properties;
+import org.apache.felix.scr.annotations.Property;
+import org.apache.felix.scr.annotations.Reference;
+import org.apache.felix.scr.annotations.Service;
+import org.apache.jackrabbit.api.security.user.Authorizable;
+import org.apache.jackrabbit.api.security.user.Group;
+import org.apache.jackrabbit.api.security.user.User;
+import org.apache.jackrabbit.api.security.user.UserManager;
+import org.apache.sling.api.resource.LoginException;
+import org.apache.sling.api.resource.ResourceResolver;
+import org.apache.sling.api.resource.ResourceResolverFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * This method is used to send email to all the users of a group.
+ * 
+ * @author rkum38
+ *
+ */
+
+@Component(metatype = true, label = "[FCA Workflow] - Email Process")
+@Service
+@Properties({ @Property(name = "process.label", value = "[FCA Workflow] - Email Process") })
+
+public class SendEmailWorkflowProcess implements WorkflowProcess {
+    private static final Logger LOG = LoggerFactory.getLogger(SendEmailWorkflowProcess.class);
+    private List<InternetAddress> emailRecipients;
+    public static final String HOST_PREFIX_PROPERTY = "host.prefix";
+    @Reference
+    private MessageGateway<Email> messageGateway;
+    @Reference
+    private ResourceResolverFactory resourceResolverFactory;
+    @Reference
+    private MessageGatewayService messageGatewayService;
+
+    @Override
+    public void execute(final WorkItem item, final WorkflowSession wfsession, final MetaDataMap metaData) throws WorkflowException {
+        this.emailRecipients = new ArrayList<InternetAddress>();
+        final WorkflowData workflowData = item.getWorkflowData();
+        final String payLoadPath = workflowData.getPayload().toString();
+        final String metaDataMap = metaData.get("PROCESS_ARGS", String.class);
+        final String emailPadding = "-------------------------------------------------------------------------------------";
+        String userGroup = "fca-brands-project-manager";
+        String status = "Approved";
+
+        if (metaDataMap != null) {
+            final String[] strings = metaDataMap.split(",");
+            if (strings[0] != null) {
+                userGroup = strings[0];
+            }
+            if (strings[1] != null) {
+                status = strings[1];
+            }
+        }
+        final Email email = new SimpleEmail();
+        try {
+            this.addUsersEmailRecipients(userGroup);
+
+            email.setTo(this.emailRecipients);
+            email.setSubject("FCA AEM Workflow Notification : Page " + status);
+            email.setMsg(emailPadding + System.lineSeparator() + "Workflow : " + item.getWorkflow().getWorkflowModel().getTitle()
+                    + System.lineSeparator() + "Start Time :" + item.getWorkflow().getTimeStarted() + System.lineSeparator()
+                    + "Workflow Initiator :" + item.getWorkflow().getInitiator() + System.lineSeparator() + emailPadding
+                    + System.lineSeparator() + System.lineSeparator() + System.lineSeparator() + "Content :" + payLoadPath
+                    + System.lineSeparator() + System.lineSeparator() + emailPadding + System.lineSeparator()
+                    + "This is an automatically generated message. Please do not reply." + System.lineSeparator() + emailPadding);
+
+            this.messageGateway = this.messageGatewayService.getGateway(Email.class);
+            // Check the logs to see that messageGateway is not null
+            this.messageGateway.send(email);
+        } catch (final EmailException e) {
+            throw new WorkflowException(e);
+        }
+    }
+
+    /**
+     * This method is used to fetch the email id of the individual users from a
+     * specific group.
+     * 
+     * @param userGroup this is userGroup
+     * @throws WorkflowException this is WorkflowException
+     */
+    private void addUsersEmailRecipients(final String userGroup) throws WorkflowException {
+
+        ResourceResolver resourceResolver = null;
+        try {
+
+            resourceResolver = WorkflowHelper.getResourceResolverServiceMap(this.resourceResolverFactory);
+            final UserManager userManager = resourceResolver.adaptTo(UserManager.class);
+            java.util.Iterator<Authorizable> users;
+            Object obj;
+            User user;
+            final String email = "email";
+            Group groups;
+
+            groups = (Group) userManager.getAuthorizable(userGroup);
+            users = groups.getMembers();
+            while (users.hasNext()) {
+                obj = users.next();
+                if (!(obj instanceof User)) {
+                    continue;
+                }
+                user = (User) obj;
+                final Node node = resourceResolver.getResource(user.getPath() + "/profile").adaptTo(Node.class);
+                if (node.hasProperty(email)) {
+                    LOG.info("Email :" + node.getProperty(email).getString().trim());
+                    this.emailRecipients.add(new InternetAddress(node.getProperty(email).getString().trim()));
+                }
+            }
+        } catch (final AddressException e) {
+            WorkflowHelper.closeResourceResolver(resourceResolver);
+            LOG.error("Address Exception occured at execute method = " + e.getMessage(), e);
+            throw new WorkflowException(e);
+        } catch (final RepositoryException e) {
+            WorkflowHelper.closeResourceResolver(resourceResolver);
+            LOG.error("Repository Exception occured at execute method = " + e.getMessage(), e);
+            throw new WorkflowException(e);
+        } catch (final LoginException e) {
+            WorkflowHelper.closeResourceResolver(resourceResolver);
+            LOG.error("Login Exception occured at execute method = " + e.getMessage(), e);
+        } finally {
+            WorkflowHelper.closeResourceResolver(resourceResolver);
+        }
+
+    }
+
+}
