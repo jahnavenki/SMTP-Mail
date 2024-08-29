@@ -21,11 +21,13 @@ import com.adobe.granite.workflow.metadata.MetaDataMap;
 import org.apache.commons.mail.Email;
 import org.apache.commons.mail.EmailException;
 import org.apache.commons.mail.SimpleEmail;
-import org.apache.felix.scr.annotations.Component;
-import org.apache.felix.scr.annotations.Properties;
-import org.apache.felix.scr.annotations.Property;
-import org.apache.felix.scr.annotations.Reference;
-import org.apache.felix.scr.annotations.Service;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
+import org.osgi.service.component.annotations.Activate;
+import org.osgi.service.component.annotations.Modified;
+import org.osgi.service.component.annotations.Deactivate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.jackrabbit.api.security.user.Authorizable;
 import org.apache.jackrabbit.api.security.user.Group;
 import org.apache.jackrabbit.api.security.user.User;
@@ -33,8 +35,6 @@ import org.apache.jackrabbit.api.security.user.UserManager;
 import org.apache.sling.api.resource.LoginException;
 import org.apache.sling.api.resource.ResourceResolver;
 import org.apache.sling.api.resource.ResourceResolverFactory;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * This method is used to send email to all the users of a group.
@@ -43,24 +43,26 @@ import org.slf4j.LoggerFactory;
  *
  */
 
-@Component(metatype = true, label = "[FCA Workflow] - Email Process")
-@Service
-@Properties({ @Property(name = "process.label", value = "[FCA Workflow] - Email Process") })
-
+@Component(
+    service = WorkflowProcess.class,
+    property = { "process.label=[FCA Workflow] - Email Process" }
+)
 public class SendEmailWorkflowProcess implements WorkflowProcess {
     private static final Logger LOG = LoggerFactory.getLogger(SendEmailWorkflowProcess.class);
     private List<InternetAddress> emailRecipients;
     public static final String HOST_PREFIX_PROPERTY = "host.prefix";
-    @Reference
-    private MessageGateway<Email> messageGateway;
-    @Reference
-    private ResourceResolverFactory resourceResolverFactory;
+
     @Reference
     private MessageGatewayService messageGatewayService;
 
+    @Reference
+    private ResourceResolverFactory resourceResolverFactory;
+
+    private MessageGateway<Email> messageGateway;
+
     @Override
     public void execute(final WorkItem item, final WorkflowSession wfsession, final MetaDataMap metaData) throws WorkflowException {
-        this.emailRecipients = new ArrayList<InternetAddress>();
+        this.emailRecipients = new ArrayList<>();
         final WorkflowData workflowData = item.getWorkflowData();
         final String payLoadPath = workflowData.getPayload().toString();
         final String metaDataMap = metaData.get("PROCESS_ARGS", String.class);
@@ -149,4 +151,14 @@ public class SendEmailWorkflowProcess implements WorkflowProcess {
 
     }
 
+    @Activate
+    @Modified
+    protected void activate() {
+        // Activation logic can be added here if necessary
+    }
+
+    @Deactivate
+    protected void deactivate() {
+        // Deactivation logic can be added here if necessary
+    }
 }
