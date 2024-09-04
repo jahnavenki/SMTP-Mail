@@ -141,3 +141,7 @@ public class EmailWorkflow implements WorkflowProcess {
 email.subject=Notification: Page Activation Request
 email.body=Dear User,<br/><br/>A request has been made to activate the page at ${pagePath}.<br/>Title: ${pageTitle}<br/><br/>Please review the page.<br/>Thank you.
 email.to=user@example.com
+..................................
+email.subject=Notification: Page Activation Request
+email.body=Dear User,<br/><br/>A request has been made to activate the page at ${pagePath}.<br/>Title: ${pageTitle}<br/><br/>Please review the page.<br/>Thank you.
+email.to=venkateswara.goud.lakkasani@cfs.com.au
