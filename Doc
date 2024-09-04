@@ -1,0 +1,29 @@
+3.2 Configure Workflow in AEM
+Create a New Workflow Model:
+
+Navigate to AEM > Tools > Workflow > Models.
+Create a new workflow model and name it CFS-Request Process Workflow.
+Add Workflow Steps:
+
+Initiate Activation: Add the “Request for Activation” step to start the process.
+Custom Email Step: Drag and drop the custom process created above into the workflow model.
+Activate Page: Add the “Activate Page” step to finalize the process.
+Configure the Custom Step:
+
+Open the properties of the custom email process step.
+Configure necessary parameters such as the recipient group, subject, and body template if required.
+Save and Activate the Workflow Model:
+
+Save your workflow model.
+Activate it so it can be used for content activation requests.
+4. Testing the Workflow
+Initiate a Request for Activation:
+
+Go to any page in AEM and request for its activation.
+Ensure that the workflow CFS-Request Process Workflow is selected.
+Verify Email Notification:
+
+Check the inbox of the specified user group to ensure the email notification has been received.
+Validate Page Activation:
+
+After the custom email process step completes, ensure that the page is activated as expected.
