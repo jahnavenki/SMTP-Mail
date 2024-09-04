@@ -10,3 +10,8 @@
   "debug.email": "$[env:SMTP_DEBUG_EMAIL;default=true]",
   "oauth.flow": "$[env:SMTP_OAUTH_FLOW;default=false]"
 }
+
+
+email.subject=Workflow is pending for your approval
+email.body=Please check the workflow as it's pending for your approval.
+email.to=venkateswara.goud.lakkasani@cfs.com.au;kirill.frolov@cfs.com.au
