@@ -1,136 +1,144 @@
-package com.crossregional.core.workflow.pqagen007;
+package au.com.cfs.winged.core.workflows;
 
-import java.util.ArrayList;
-import java.util.List;
-
-import javax.jcr.Node;
-import javax.jcr.RepositoryException;
-import javax.mail.internet.AddressException;
-import javax.mail.internet.InternetAddress;
-
-import com.crossregional.core.workflow.helper.WorkflowHelper;
-import com.day.cq.mailer.MessageGateway;
-import com.day.cq.mailer.MessageGatewayService;
 import com.adobe.granite.workflow.WorkflowException;
 import com.adobe.granite.workflow.WorkflowSession;
 import com.adobe.granite.workflow.exec.WorkItem;
-import com.adobe.granite.workflow.exec.WorkflowData;
 import com.adobe.granite.workflow.exec.WorkflowProcess;
 import com.adobe.granite.workflow.metadata.MetaDataMap;
-
-import org.apache.commons.mail.Email;
-import org.apache.commons.mail.EmailException;
-import org.apache.commons.mail.SimpleEmail;
-import org.osgi.service.component.annotations.Component;
-import org.osgi.service.component.annotations.Reference;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.apache.jackrabbit.api.security.user.Authorizable;
-import org.apache.jackrabbit.api.security.user.Group;
-import org.apache.jackrabbit.api.security.user.User;
-import org.apache.jackrabbit.api.security.user.UserManager;
+import com.day.cq.mailer.MessageGateway;
+import com.day.cq.mailer.MessageGatewayService;
+import org.apache.commons.mail.Email;
+import org.apache.commons.mail.EmailException;
+import org.apache.commons.mail.HtmlEmail;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
 import org.apache.sling.api.resource.ResourceResolver;
 import org.apache.sling.api.resource.ResourceResolverFactory;
+import java.util.Properties;
+import java.io.InputStream;
+import org.apache.sling.api.resource.Resource;
+import com.day.cq.dam.api.Asset;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 /**
- * This method is used to send email to all the users of a group.
- * 
- * @author rkum38
- *
+ * This method gets the email metadata from email.properties file and calls sendEmail() to trigger email
+ * @throws WorkflowException
  */
+@Component(service = WorkflowProcess.class,
+        property = {"process.label=Email Workflow Process"})
+public class EmailWorkflow implements WorkflowProcess {
 
-@Component(
-    service = WorkflowProcess.class,
-    property = { "process.label=[FCA Workflow] - Email Process" }
-)
-public class SendEmailWorkflowProcess implements WorkflowProcess {
-    private static final Logger LOG = LoggerFactory.getLogger(SendEmailWorkflowProcess.class);
-    private List<InternetAddress> emailRecipients;
-    public static final String HOST_PREFIX_PROPERTY = "host.prefix";
+  protected final Logger logger = LoggerFactory.getLogger(EmailWorkflow.class);
 
-    @Reference
-    private MessageGatewayService messageGatewayService;
+  private static final String ASSETPATH_EMAIL_PROPERTIES = "/content/dam/cfs-winged/documents/email/email.properties";
 
-    private MessageGateway<Email> messageGateway;
+  @Reference
+  private MessageGatewayService messageGatewayService;
 
-    @Override
-    public void execute(final WorkItem item, final WorkflowSession wfSession, final MetaDataMap metaData) throws WorkflowException {
-        this.emailRecipients = new ArrayList<>();
-        final WorkflowData workflowData = item.getWorkflowData();
-        final String payLoadPath = workflowData.getPayload().toString();
-        final String metaDataMap = metaData.get("PROCESS_ARGS", String.class);
-        final String emailPadding = "-------------------------------------------------------------------------------------";
-        String userGroup = "fca-brands-project-manager";
-        String status = "Approved";
+  @Reference
+  private ResourceResolverFactory resolverFactory;
 
-        if (metaDataMap != null) {
-            final String[] strings = metaDataMap.split(",");
-            if (strings[0] != null) {
-                userGroup = strings[0];
-            }
-            if (strings[1] != null) {
-                status = strings[1];
-            }
-        }
-        final Email email = new SimpleEmail();
-        try (ResourceResolver resourceResolver = wfSession.adaptTo(ResourceResolver.class)) {
-            this.addUsersEmailRecipients(userGroup, resourceResolver);
+  public void execute(WorkItem workItem, WorkflowSession wfSession,
+                      MetaDataMap metaDataMap) throws WorkflowException {
+    logger.info("Email Workflow Started");
 
-            email.setTo(this.emailRecipients);
-            email.setSubject("FCA AEM Workflow Notification : Page " + status);
-            email.setMsg(emailPadding + System.lineSeparator() + "Workflow : " + item.getWorkflow().getWorkflowModel().getTitle()
-                    + System.lineSeparator() + "Start Time :" + item.getWorkflow().getTimeStarted() + System.lineSeparator()
-                    + "Workflow Initiator :" + item.getWorkflow().getInitiator() + System.lineSeparator() + emailPadding
-                    + System.lineSeparator() + System.lineSeparator() + System.lineSeparator() + "Content :" + payLoadPath
-                    + System.lineSeparator() + System.lineSeparator() + emailPadding + System.lineSeparator()
-                    + "This is an automatically generated message. Please do not reply." + System.lineSeparator() + emailPadding);
+    try (ResourceResolver resolver = wfSession.adaptTo(ResourceResolver.class)) {
+      if (resolver == null) {
+        logger.error("Resource resolver is null");
+        return;
+      }
 
-            this.messageGateway = this.messageGatewayService.getGateway(Email.class);
-            // Check the logs to see that messageGateway is not null
-            this.messageGateway.send(email);
-        } catch (final EmailException e) {
-            throw new WorkflowException(e);
-        }
+      String subject = StringUtils.EMPTY;
+      String body = StringUtils.EMPTY;
+      String emailTo = StringUtils.EMPTY;
+
+      Resource resource = resolver.getResource(ASSETPATH_EMAIL_PROPERTIES);
+      if (resource == null) {
+        logger.error("Resource for email properties not found at path: {}", ASSETPATH_EMAIL_PROPERTIES);
+        return;
+      }
+
+      Asset asset = resource.adaptTo(Asset.class);
+      if (asset == null) {
+        logger.error("Asset could not be adapted from resource at path: {}", ASSETPATH_EMAIL_PROPERTIES);
+        return;
+      }
+
+      InputStream inputStream = asset.getOriginal().getStream();
+      if (inputStream == null) {
+        logger.error("Input stream for email properties is null");
+        return;
+      }
+
+      Properties properties = new Properties();
+      properties.load(inputStream);
+
+      subject = properties.getProperty("email.subject", StringUtils.EMPTY);
+      body = properties.getProperty("email.body", StringUtils.EMPTY);
+      emailTo = properties.getProperty("email.to", StringUtils.EMPTY);
+
+      // Debugging: Log the raw body before replacements
+      logger.debug("Raw email body before replacements: {}", body);
+
+      // Get the payload path and title
+      String payloadPath = workItem.getWorkflowData().getPayload().toString();
+      Resource pageResource = resolver.getResource(payloadPath);
+
+      if (pageResource != null) {
+        String pageTitle = pageResource.getValueMap().get("jcr:title", String.class);
+        body = StringUtils.replace(body, "${pagePath}", payloadPath);
+        body = StringUtils.replace(body, "${pageTitle}", pageTitle != null ? pageTitle : "Untitled Page");
+
+        // Debugging: Log the body after replacements
+        logger.debug("Processed email body after replacements: {}", body);
+      } else {
+        logger.warn("Resource for payload path {} not found", payloadPath);
+      }
+
+      // Log the final subject and recipient list
+      logger.info("Sending email with subject: {}", subject);
+      logger.info("Recipients: {}", emailTo);
+
+      String[] recipients = emailTo.split(";");
+      sendEmail(subject, body, recipients);
+
+    } catch (EmailException e) {
+      logger.error("email exception occurred", e);
     }
-
-    /**
-     * This method is used to fetch the email id of the individual users from a
-     * specific group.
-     * 
-     * @param userGroup this is userGroup
-     * @param resourceResolver this is resourceResolver
-     * @throws WorkflowException this is WorkflowException
-     */
-    private void addUsersEmailRecipients(final String userGroup, final ResourceResolver resourceResolver) throws WorkflowException {
-
-        try {
-            final UserManager userManager = resourceResolver.adaptTo(UserManager.class);
-            java.util.Iterator<Authorizable> users;
-            Object obj;
-            User user;
-            final String email = "email";
-            Group groups;
-
-            groups = (Group) userManager.getAuthorizable(userGroup);
-            users = groups.getMembers();
-            while (users.hasNext()) {
-                obj = users.next();
-                if (!(obj instanceof User)) {
-                    continue;
-                }
-                user = (User) obj;
-                final Node node = resourceResolver.getResource(user.getPath() + "/profile").adaptTo(Node.class);
-                if (node.hasProperty(email)) {
-                    LOG.info("Email :" + node.getProperty(email).getString().trim());
-                    this.emailRecipients.add(new InternetAddress(node.getProperty(email).getString().trim()));
-                }
-            }
-        } catch (final AddressException e) {
-            LOG.error("Address Exception occured at execute method = " + e.getMessage(), e);
-            throw new WorkflowException(e);
-        } catch (final RepositoryException e) {
-            LOG.error("Repository Exception occured at execute method = " + e.getMessage(), e);
-            throw new WorkflowException(e);
-        }
+    catch (Exception e) {
+      logger.error("An error occurred during the email workflow process", e);
     }
+  }
+
+  /**
+   * This method sets the email subject, body, recipients and sends email using the Email Configuration
+   * @param subjectLine
+   * @param msgBody
+   * @param recipients
+   * @throws EmailException
+   */
+  private void sendEmail(String subjectLine, String msgBody, String[] recipients) throws EmailException {
+    try {
+      Email email = new HtmlEmail();
+      for (String recipient : recipients) {
+        email.addTo(recipient.trim()); // Trim to remove any accidental spaces
+      }
+      email.setSubject(subjectLine);
+      email.setMsg(msgBody); // Make sure this method call is appropriate for HTML emails
+      MessageGateway<Email> messageGateway = messageGatewayService.getGateway(HtmlEmail.class);
+      if (messageGateway != null) {
+        logger.info("Sending out email");
+        messageGateway.send(email);
+        logger.info("Email sent successfully");
+      } else {
+        logger.error("The message gateway could not be retrieved.");
+      }
+    } catch (Exception e) {
+      logger.error("An error occurred while sending the email", e);
+    }
+  }
 }
