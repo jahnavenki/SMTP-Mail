@@ -21,14 +21,13 @@ public class CFSEnviromentUse extends WCMUsePojo {
             }
         }
     }
+    public final boolean isCheckAuthor() {
+        return isAuthor;
+    }
+}
 
 https://author-p110482-e1077234.adobeaemcloud.com -dev01
 https://author-p110482-e1080535.adobeaemcloud.com -dev02
 https://author-p110482-e1139939.adobeaemcloud.com -dev03
 https://author-p110482-e1080620.adobeaemcloud.com -stage
 https://author-p110482-e1080534.adobeaemcloud.com -prod
-
-    public final boolean isCheckAuthor() {
-        return isAuthor;
-    }
-}
