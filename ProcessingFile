@@ -191,3 +191,8 @@ This is an automatically generated message. Please do not reply.
 
 # Email recipients (semicolon-separated)
 email.to=group:yourGroupName;user@example.com
+
+[main] [ERROR] /build_root/build/cfs-aem-mono/cfs.aem-next/core/src/main/java/au/com/cfs/winged/core/workflows/EmailWorkflow.java:[9,47] cannot access org.apache.jackrabbit.api.security.user.Authorizable
+  bad class file: /root/.m2/repository/com/adobe/aem/aem-sdk-api/2023.3.11382.20230315T073850Z-230100/aem-sdk-api-2023.3.11382.20230315T073850Z-230100.jar(org/apache/jackrabbit/api/security/user/Authorizable.class)
+    class file has wrong version 55.0, should be 52.0
+    Please remove or make sure it appears in the correct subdirectory of the classpath.
