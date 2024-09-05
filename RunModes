@@ -1,0 +1,28 @@
+package com.colonialfirststate.helper.api;
+
+import java.util.Set;
+
+import org.apache.sling.settings.SlingSettingsService;
+
+import com.adobe.cq.sightly.WCMUsePojo;
+
+public class CFSEnviromentUse extends WCMUsePojo {
+
+    private boolean isAuthor = false;
+
+    @Override
+    public final void activate() throws Exception {
+        SlingSettingsService settingService = getSlingScriptHelper()
+                .getService(SlingSettingsService.class);
+        if (settingService != null) {
+            Set<String> runModes = settingService.getRunModes();
+            if (runModes.contains("author")) {
+                isAuthor = true;
+            }
+        }
+    }
+
+    public final boolean isCheckAuthor() {
+        return isAuthor;
+    }
+}
