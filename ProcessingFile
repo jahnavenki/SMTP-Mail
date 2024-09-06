@@ -37,9 +37,9 @@ import java.io.IOException;
 
 @Component(service = WorkflowProcess.class,
         property = {"process.label=Email Workflow Process" })
-public class EmailWorkflow implements WorkflowProcess {
+public class SendEmailWorkflow implements WorkflowProcess {
 
-  protected final Logger logger = LoggerFactory.getLogger(EmailWorkflow.class);
+  protected final Logger logger = LoggerFactory.getLogger(SendEmailWorkflow.class);
 
   private static final String ASSETPATH_EMAIL_PROPERTIES = "/content/dam/cfs-winged/documents/email/email.properties";
 
@@ -184,56 +184,4 @@ public class EmailWorkflow implements WorkflowProcess {
       logger.error("Error while sending email", e);
     }
   }
-}
-
-09:50:06,812 [main] [ERROR] Failed to execute goal org.apache.maven.plugins:maven-compiler-plugin:3.8.1:compile (default-compile) on project cfs-winged.core: Compilation failure
-09:50:06,812 [main] [ERROR] /build_root/build/cfs-aem-mono/cfs.aem-next/core/src/main/java/au/com/cfs/winged/core/workflows/EmailWorkflow.java:[9,47] cannot access org.apache.jackrabbit.api.security.user.Authorizable
-09:50:06,812 [main] [ERROR]   bad class file: /root/.m2/repository/com/adobe/aem/aem-sdk-api/2023.3.11382.20230315T073850Z-230100/aem-sdk-api-2023.3.11382.20230315T073850Z-230100.jar(org/apache/jackrabbit/api/security/user/Authorizable.class)
-09:50:06,812 [main] [ERROR]     class file has wrong version 55.0, should be 52.0
-09:50:06,812 [main] [ERROR]     Please remove or make sure it appears in the correct subdirectory of the classpath.
-
-
-private String[] getRecipients(String emailTo, ResourceResolver resolver) {
-    // Split recipients and handle group logic
-    List<String> recipientList = new ArrayList<>();
-    String[] emails = emailTo.split(";");
-
-    for (String email : emails) {
-        if (email.startsWith("group:")) {
-            String groupName = email.substring(6);
-            try {
-                UserManager userManager = resolver.adaptTo(UserManager.class);
-                if (userManager != null) {
-                    // Fetch the group node directly
-                    javax.jcr.Session session = resolver.adaptTo(javax.jcr.Session.class);
-                    if (session != null) {
-                        javax.jcr.Node groupNode = session.getNode("/home/groups/" + groupName);
-                        if (groupNode != null && groupNode.hasNodes()) {
-                            // Traverse the group members
-                            javax.jcr.NodeIterator members = groupNode.getNodes();
-                            while (members.hasNext()) {
-                                javax.jcr.Node memberNode = members.nextNode();
-                                if (memberNode != null && memberNode.hasProperty("profile/email")) {
-                                    // Retrieve email property
-                                    String memberEmail = memberNode.getProperty("profile/email").getString();
-                                    if (StringUtils.isNotBlank(memberEmail)) {
-                                        recipientList.add(memberEmail);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    logger.error("UserManager adaptation failed for resolver");
-                }
-            } catch (RepositoryException e) {
-                logger.error("Error while fetching recipients from group: {}", groupName, e);
-            }
-        } else {
-            if (StringUtils.isNotBlank(email)) {
-                recipientList.add(email.trim());
-            }
-        }
-    }
-    return recipientList.toArray(new String[0]);
 }
