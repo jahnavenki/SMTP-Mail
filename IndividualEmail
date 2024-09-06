@@ -147,3 +147,45 @@ public class SendEmailWorkflow implements WorkflowProcess {
         }
     }
 }
+...............................
+@Reference
+private QueryBuilder queryBuilder;
+
+private List<String> getUsersFromGroup(String groupName, ResourceResolver resolver) {
+    List<String> users = new ArrayList<>();
+    try {
+        // Build query to find all users of a group
+        Map<String, String> queryMap = new HashMap<>();
+        queryMap.put("path", "/home/groups");
+        queryMap.put("type", "rep:Group");
+        queryMap.put("groupName", groupName);
+
+        Query query = queryBuilder.createQuery(PredicateGroup.create(queryMap), resolver.adaptTo(Session.class));
+        SearchResult result = query.getResult();
+        for (Hit hit : result.getHits()) {
+            Resource groupResource = hit.getResource();
+            Group group = resolver.adaptTo(UserManager.class).getAuthorizable(groupResource.getName(), Group.class);
+            if (group != null) {
+                Iterator<Authorizable> members = group.getMembers();
+                while (members.hasNext()) {
+                    Authorizable member = members.next();
+                    if (member instanceof User) {
+                        Resource profileResource = resolver.getResource(member.getPath() + "/profile");
+                        if (profileResource != null) {
+                            ValueMap profileProps = profileResource.adaptTo(ValueMap.class);
+                            if (profileProps != null) {
+                                String memberEmail = profileProps.get("email", String.class);
+                                if (StringUtils.isNotBlank(memberEmail)) {
+                                    users.add(memberEmail);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    } catch (RepositoryException e) {
+        logger.error("Error fetching users from group: {}", groupName, e);
+    }
+    return users;
+}
