@@ -1,0 +1,149 @@
+package au.com.cfs.winged.core.workflows;
+
+import com.adobe.granite.workflow.WorkflowException;
+import com.adobe.granite.workflow.WorkflowSession;
+import com.adobe.granite.workflow.exec.WorkItem;
+import com.adobe.granite.workflow.exec.WorkflowProcess;
+import com.adobe.granite.workflow.metadata.MetaDataMap;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.sling.api.resource.ValueMap;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import com.day.cq.mailer.MessageGateway;
+import com.day.cq.mailer.MessageGatewayService;
+import org.apache.commons.mail.Email;
+import org.apache.commons.mail.EmailException;
+import org.apache.commons.mail.HtmlEmail;
+import org.apache.sling.api.resource.ResourceResolver;
+import org.apache.sling.api.resource.ResourceResolverFactory;
+import org.apache.sling.api.resource.Resource;
+import com.day.cq.dam.api.Asset;
+import org.json.JSONException;
+import org.json.JSONObject;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Properties;
+import java.io.InputStream;
+import java.io.IOException;
+
+@Component(service = WorkflowProcess.class,
+        property = {"process.label=Email Workflow Process"})
+public class SendEmailWorkflow implements WorkflowProcess {
+
+    protected final Logger logger = LoggerFactory.getLogger(SendEmailWorkflow.class);
+
+    private static final String ASSETPATH_EMAIL_PROPERTIES = "/content/dam/cfs-winged/documents/email/email.properties";
+
+    @Reference
+    private MessageGatewayService messageGatewayService;
+
+    @Reference
+    private ResourceResolverFactory resolverFactory;
+
+    @Override
+    public void execute(WorkItem workItem, WorkflowSession wfSession, MetaDataMap metaDataMap) throws WorkflowException {
+        logger.info("Email Workflow Started");
+        ResourceResolver resolver = null;
+        JSONObject jsonResponse = new JSONObject();
+        boolean sent = false;
+        try {
+            resolver = wfSession.adaptTo(ResourceResolver.class);
+            String subject = StringUtils.EMPTY;
+            String emailTo = StringUtils.EMPTY;
+            String emailBodyTemplate = StringUtils.EMPTY;
+            String status = "Pending"; // Status for the email subject
+
+            if (resolver != null) {
+                Resource resource = resolver.getResource(ASSETPATH_EMAIL_PROPERTIES);
+                if (resource != null) {
+                    Asset asset = resource.adaptTo(Asset.class);
+                    InputStream inputStream = asset.getOriginal().getStream();
+                    if (inputStream != null) {
+                        Properties properties = new Properties();
+                        properties.load(inputStream);
+                        subject = properties.getProperty("email.subject");
+                        emailBodyTemplate = properties.getProperty("email.body");
+                        emailTo = properties.getProperty("email.to");
+                        logger.info("email.subject->" + subject);
+                        logger.info("email.body->" + emailBodyTemplate);
+                        logger.info("email.to->" + emailTo);
+                    }
+                }
+            }
+
+            String path = workItem.getWorkflowData().getPayload().toString();
+
+            // Handle individual users
+            String[] recipients = getRecipients(emailTo);
+            sendEmail(subject, emailBodyTemplate, status, workItem, recipients, path);
+            sent = true;
+            jsonResponse.put("result", sent ? "done" : "something went wrong");
+
+            logger.error("Payload path: {}", path);
+            String args = metaDataMap.get("PROCESS_ARGS", String.class);
+            logger.error("Process args: {}", args);
+
+        } catch (JSONException | IOException e) {
+            logger.error("Exception occurred", e);
+        } catch (Exception e) {
+            logger.error("Exception occurred", e);
+        }
+    }
+
+    // Updated method to handle individual email recipients
+    private String[] getRecipients(String emailTo) {
+        // Split individual recipients (emails are separated by semicolons)
+        List<String> recipientList = new ArrayList<>();
+        String[] emails = emailTo.split(";");
+
+        for (String email : emails) {
+            if (StringUtils.isNotBlank(email)) {
+                recipientList.add(email.trim());
+            }
+        }
+        return recipientList.toArray(new String[0]);
+    }
+
+    private void sendEmail(String subject, String emailBodyTemplate, String status, WorkItem item, String[] recipients, String payLoadPath) throws EmailException {
+        try {
+            Email email = new HtmlEmail();
+
+            // Add recipients
+            for (String recipient : recipients) {
+                email.addTo(recipient);
+            }
+            email.setSubject(subject);
+            String emailPadding = "<hr style='border:1px solid #cccccc;'>";
+            String msgBody = "<html><body>" +
+                    emailBodyTemplate + "<br/>" +
+                    emailPadding + "<br/>" +
+                    "<strong>Workflow:</strong> " + item.getWorkflow().getWorkflowModel().getTitle() + "<br/>" +
+                    "<strong>Start Time:</strong> " + item.getWorkflow().getTimeStarted() + "<br/>" +
+                    "<strong>Workflow Initiator:</strong> " + item.getWorkflow().getInitiator() + "<br/>" +
+                    emailPadding + "<br/>" +
+                    "<strong>Content:</strong> <a href='" + payLoadPath + "'>" + payLoadPath + "</a><br/><br/>" +
+                    emailPadding + "<br/>" +
+                    "<i>This is an automatically generated message. Please do not reply.</i>" +
+                    emailPadding +
+                    "</body></html>";
+
+            // Set the HTML message body
+            ((HtmlEmail) email).setHtmlMsg(msgBody);
+
+            // Send email via Message Gateway
+            MessageGateway<Email> messageGateway = messageGatewayService.getGateway(HtmlEmail.class);
+            if (messageGateway != null) {
+                logger.info("Sending out email");
+                messageGateway.send(email);
+                logger.info("Email sent successfully");
+            } else {
+                logger.error("The message gateway could not be retrieved.");
+            }
+        } catch (Exception e) {
+            logger.error("Error while sending email", e);
+        }
+    }
+}
