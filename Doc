@@ -1,73 +1,78 @@
-Overview : 
+Overview:
 
-The primary use of the “CFS Activation Workflow Process“ is to manage the approval process for conent before it goes live on the site. It ensures that content is reviewed and approved by the appropriate stakeholders before being published.
+The primary purpose of the “CFS Activation Workflow Process” is to manage the approval process for content before it goes live on the site. It ensures that content is reviewed and approved by the appropriate stakeholders before being published.
 
-Process :
+Process:
 
-When a publisher completes their work and wants to publish it, they initiate this workflow. The request then moves through a series of predefined steps, such as review and approval, before the conent is activated(i.e published) on the live site.
+When a publisher completes their work and wants to publish it, they initiate this workflow. The request then moves through a series of predefined steps, such as review and approval, before the content is activated (i.e., published) on the live site.
 
-CFS-Activation Workflow Process- Configuration
+CFS-Activation Workflow Process - Configuration:
 
-1 Create a New Workflow Model:
+Create a New Workflow Model:
 
 Navigate to AEM > Tools > Workflow > Models.
 Create a new workflow model and name it CFS-Activation Workflow Process.
+Add Workflow Steps:
 
-2 Add Workflow Steps:
+Custom Email Step: Drag and drop the custom process created earlier into the workflow model.
+Add the “Email Workflow Process” step to send an email to the publishers.
+Create Version Step: Drag and drop the “create version” process created earlier into the workflow model to create a version of the page for content modifications.
+Activate Page Step: Add the “Page Activation” step to finalize the process and activate the page.
 
-Custom Email Step: Drag and drop the custom process created above into the workflow model.
- Add the “Email Workflow Process” step to to send the mail to the publishers.
+Java Version Compatibility and Build Error Resolution for AEM Workflow Modules
 
- Create Version Step:   Drag and drop the  “create version” process created above into the workflow model  to create the vesion of the page on the content modifications.
+Java Version Compatibility Report:
 
-Activate Page: Add the “Page Activation” step to finalize the process.
+We are using the Group API (Authorizable class) to retrieve user groups for workflow integration. However, it appears that the Group API is compiled with Java 11, while our current environment is configured for Java 8. This mismatch between the expected and actual Java versions is causing build issues.
 
-Java Version Compatibility : I’m using  Group API (Authorizable class) to get the user groups to utilize in the workflow and it seems to be compiled with java 11.  However, our enviroments expeciting java 8.  So, we might need to adject pom.xml files of the project to make sure the maven build config aligns with java version expected in the enviroment.
+Details:
 
-Details 
+Current Java Version: 8
+Requested Java Version: 11
+Issue: During the build process, we are encountering errors related to incompatible class files. The error message suggests that the project requires Java 11. The class file version mismatch (Java 8 vs. Java 11) is preventing the project from compiling and deploying successfully.
+Build Error:
 
-Current Java Version : 8
-
-Requrested Version : 11
-
-Issue : During the build process, we are receiving error related incompatible clas files, which suggests that the project  needs java 11. the error mesage idicates a mismathch between calss file vesions , which impacts abiltity to compile and deploy.
-
-Build Error: 09:50:06,812 [main] [ERROR] Failed to execute goal org.apache.maven.plugins:maven-compiler-plugin:3.8.1:compile (default-compile) on project cfs-winged.core: Compilation failure
+vbnet
+Copy code
+09:50:06,812 [main] [ERROR] Failed to execute goal org.apache.maven.plugins:maven-compiler-plugin:3.8.1:compile (default-compile) on project cfs-winged.core: Compilation failure
 09:50:06,812 [main] [ERROR] /build_root/build/cfs-aem-mono/cfs.aem-next/core/src/main/java/au/com/cfs/winged/core/workflows/EmailWorkflow.java:[9,47] cannot access org.apache.jackrabbit.api.security.user.Authorizable
-09:50:06,812 [main] [ERROR]   bad class file: /root/.m2/repository/com/adobe/aem/aem-sdk-api/2023.3.11382.20230315T073850Z-230100/aem-sdk-api-2023.3.11382.20230315T073850Z-230100.jar(org/apache/jackrabbit/api/security/user/Authorizable.class)
-09:50:06,812 [main] [ERROR]     class file has wrong version 55.0, should be 52.0
-09:50:06,812 [main] [ERROR]     Please remove or make sure it appears in the correct subdirectory of the classpath.
+09:50:06,812 [main] [ERROR] bad class file: /root/.m2/repository/com/adobe/aem/aem-sdk-api/2023.3.11382.20230315T073850Z-230100/aem-sdk-api-2023.3.11382.20230315T073850Z-230100.jar(org/apache/jackrabbit/api/security/user/Authorizable.class)
+09:50:06,812 [main] [ERROR] class file has wrong version 55.0, should be 52.0
+09:50:06,812 [main] [ERROR] Please remove or make sure it appears in the correct subdirectory of the classpath.
+This indicates that the Authorizable.class is compiled with Java 11 (version 55.0), but the environment is expecting Java 8 (version 52.0).
 
-Solution: Adjust java version in Pom.xml
+Proposed Solution:
 
+To resolve this issue, we need to adjust the Java version in the pom.xml file of the relevant modules to ensure the Maven build configuration aligns with the Java version expected by the environment. The necessary changes involve specifying Java 8 compatibility in the maven-compiler-plugin configuration.
+
+Pom.xml Adjustments:
+
+xml
+Copy code
 <requireJavaVersion>
- <message>Maven must be executed with a Java 8 JRE or higher.</message>
- <version>1.8</version>
+  <message>Maven must be executed with a Java 8 JRE or higher.</message>
+  <version>1.8</version>
 </requireJavaVersion>
 
 <plugin>
- <groupId>org.apache.maven.plugins</groupId>
- <artifactId>maven-compiler-plugin</artifactId>
- <configuration>
- <source>1.8</source>
- <target>1.8</target>
- </configuration>
+  <groupId>org.apache.maven.plugins</groupId>
+  <artifactId>maven-compiler-plugin</artifactId>
+  <configuration>
+    <source>1.8</source>
+    <target>1.8</target>
+  </configuration>
 </plugin>
+These adjustments ensure the project is compiled with Java 8 (source and target versions 1.8).
 
-Requied Modules : 
+Required Modules for Java Version Update:
 
-aem.cfs-legacy 
+The following modules need to be updated to align with Java 8 requirements:
 
-cfs.aem-next 
-
+aem.cfs-legacy
+cfs.aem-next
 cfs.origination.bed.aem
+cfs-commons
+cfs-forms
+Additional Notes:
 
-cfs-commons 
-
-and cfs-forms 
-
- 
-
-Could we discuss of possibility of updating the java vrsion to 11
-
-
+When using the Group API (Authorizable class) within these modules, ensure the correct version is used. If your project or environment plans to migrate to Java 11 in the future, appropriate changes should be reflected in the pom.xml for compatibility.
