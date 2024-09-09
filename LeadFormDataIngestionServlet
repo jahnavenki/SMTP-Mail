@@ -1,0 +1,281 @@
+package au.com.cfs.forms.servlets;
+
+
+import au.com.cfs.forms.services.FormConfigService;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import okhttp3.*;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.sling.api.SlingHttpServletRequest;
+import org.apache.sling.api.SlingHttpServletResponse;
+import org.apache.sling.api.servlets.HttpConstants;
+import org.apache.sling.api.servlets.SlingAllMethodsServlet;
+import org.osgi.service.component.annotations.Activate;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
+import org.osgi.service.component.propertytypes.ServiceDescription;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
+import javax.servlet.Servlet;
+import javax.servlet.ServletException;
+import java.io.IOException;
+import java.security.KeyManagementException;
+import java.security.NoSuchAlgorithmException;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
+
+@SuppressWarnings("KotlinInternalInJava")
+@Component(service = Servlet.class,
+        property = {
+                "sling.servlet.methods=" + HttpConstants.METHOD_POST,
+                "sling.servlet.paths=/bin/forms/submit-data"
+        })
+@ServiceDescription("Lead Form Data Ingestion Servlet")
+
+
+public class LeadFormDataIngestionServlet extends SlingAllMethodsServlet {
+
+    /**
+     * default log
+     */
+    private Logger LOG = LoggerFactory.getLogger(getClass());
+
+    private String clientId;
+    private String clientSecret;
+
+    private String headerSchemaId;
+    private String bodySchemaId;
+    private String dataSetId;
+    private String flowId;
+    private String imsOrgId;
+    private String sandBoxId;
+    private String oauthEndpoint;
+    private String aepEndpoint;
+
+    private static final String APPLICATION_JSON = "application/json";
+    private static final String ACCEPT = "Accept";
+    private static final String CONTENT_TYPE = "Content-Type";
+    private static final String CONTENTTYPE = "contentType";
+
+    private static final String TEXT_PLAIN = "text/plain";
+
+    private static final String AUTHORIZATION =  "Authorization";
+    private static final String BEARER = "Bearer ";
+    private static final String CACHE_CONTROL = "Cache-Control";
+    private static final String X_API_KEY = "x-api-key";
+    private static final String X_ORG_ID = "x-gw-ims-org-id";
+    private static final String X_SANDBOX_NAME = "x-sandbox-name";
+    private static final String X_ADOBE_FLOW_ID = "x-adobe-flow-id";
+    private static final String ID = "id";
+    private static final String APPLICATION_VND = "application/vnd.adobe.xed-full+json;version=1";
+    private static final String SCHEMA_REF = "schemaRef";
+    private static final String IMS_ORG_ID = "imsOrgId";
+    private static final String DATASET_ID = "datasetId";
+    private static final String FLOW_ID = "flowId";
+    private static final String EVENT_TYPE = "eventType";
+    private static final String REGISTER_CLICK = "RegisterClick";
+    private static final String XDM_META = "xdmMeta";
+    private static final String XDM_ENTITY = "xdmEntity";
+    private static final String HEADER = "header";
+    private static final String BODY = "body";
+    private static final String SSL = "SSL";
+    @Reference
+    private transient FormConfigService formConfigService;
+
+    @Activate
+    protected void activate(Map<String, Object> properties) {
+        clientId = formConfigService.getClientId();
+        clientSecret = formConfigService.getClientSecret();
+        headerSchemaId = formConfigService.getHeaderSchemaId();
+        bodySchemaId = formConfigService.getBodySchemaId();
+        dataSetId = formConfigService.getDataSetId();
+        flowId = formConfigService.getFlowId();
+        imsOrgId = formConfigService.getImsOrgId();
+        sandBoxId = formConfigService.getSandBoxId();
+        oauthEndpoint = formConfigService.getOauthEndpoint();
+        aepEndpoint = formConfigService.getAepEndpoint();
+    }
+    protected void doPost(SlingHttpServletRequest slingHttpServletRequest, SlingHttpServletResponse slingHttpServletResponse) throws ServletException, IOException {
+
+
+        Optional.ofNullable(slingHttpServletResponse)
+                .ifPresent(code -> {
+					
+                    try {
+                        Map<String, String[]> map = slingHttpServletRequest.getParameterMap();
+                        String json = StringUtils.EMPTY;
+                        for(Map.Entry<String, String[]> entry : map.entrySet()) {
+                            json = entry.getValue()[0];
+                        }
+
+                        String token = getOauthToken(clientId, clientSecret, oauthEndpoint);
+                        Map<String,String> requestBodyMap  = parseRequestMaptoXDMFormat(map);
+                        JsonObject jsonObject = JsonParser.parseString(json).getAsJsonObject();
+
+                        String bodyJson = createAepRequestBody(headerSchemaId, imsOrgId, dataSetId, flowId, bodySchemaId, jsonObject);
+
+                        sendDataToAEP(bodyJson, token, clientId, imsOrgId, sandBoxId, flowId, aepEndpoint);
+
+                    } catch (IOException | NoSuchAlgorithmException | KeyManagementException e) {
+                        throw new RuntimeException(e);
+                    } catch (Exception e) {
+                        LOG.error("Exception occurred in doPost {0}"+ e);
+                    }
+                });
+    }
+    private Map<String,String> parseRequestMaptoXDMFormat(Map<String, String[]> map) {
+        Map<String,String> parsedMap = new HashMap<String,String>();
+        map.forEach((k, v) -> parsedMap.put(k,v.toString().replace("[","").replace("]","")));
+        return parsedMap ;
+    }
+
+    private void sendDataToAEP(String bodyString, String token, String clientId, String imsOrgId, String sandBoxId, String flowId, String aepEndpoint) throws IOException, NoSuchAlgorithmException, KeyManagementException {
+
+        OkHttpClient client =  getTrustAllCertsClient();
+        MediaType mediaType = MediaType.parse(APPLICATION_JSON);
+        RequestBody body = RequestBody.create(mediaType, bodyString);
+
+        Request request = new Request.Builder()
+                .url(aepEndpoint)
+                .method(HttpConstants.METHOD_POST, body)
+                .addHeader(ACCEPT, APPLICATION_JSON)
+                .addHeader(CONTENT_TYPE, APPLICATION_JSON)
+                .addHeader(AUTHORIZATION, BEARER+token).addHeader(CACHE_CONTROL, CACHE_CONTROL)
+                .addHeader(X_API_KEY, clientId)
+                .addHeader(X_ORG_ID, imsOrgId)
+                .addHeader(X_SANDBOX_NAME, sandBoxId)
+                .addHeader(X_ADOBE_FLOW_ID, flowId)
+                .build();
+        try {
+            Response response = client.newCall(request).execute();
+         log("sendDataToAEP() :: AEP Response :::::::::::::::" +response.body().string());
+        } catch (IOException e) {
+            LOG.error("Exception occurred in sendDataToAEP {0}"+ e);
+            throw new RuntimeException(e);
+
+        } catch (Exception e) {
+            LOG.error("Exception occurred in sendDataToAEP {0}"+ e);
+        }
+    }
+
+    public String getOauthToken(String clientId, String clientSecret, String oauthEndpoint) throws NoSuchAlgorithmException, KeyManagementException {
+
+        String accessToken = StringUtils.EMPTY;
+        OkHttpClient client = null;
+        try {
+            client = getTrustAllCertsClient();
+            MediaType mediaType = MediaType.parse(TEXT_PLAIN);
+            RequestBody body = RequestBody.create(mediaType, "");
+            //Add the ids from configuration
+
+            String oauthURL = oauthEndpoint + clientId +"&client_secret=" + clientSecret + "&scope=openid,AdobeID,read_organizations,additional_info.projectedProductContext,session";
+
+            Request request = new Request.Builder()
+                    .url(oauthURL)
+                    .method(HttpConstants.METHOD_POST, body).build();
+
+                Response response = client.newCall(request).execute();
+
+            String token = response.body().string();
+            
+            ObjectMapper objectMapper = new ObjectMapper();
+
+            JsonNode jsonNode = objectMapper.readTree(token);
+            accessToken = jsonNode.get("access_token").asText();
+          LOG.info("getOauthToken() :: Token CREATED SUCCESSFULLY >>>>>>>>>");
+        } catch (NoSuchAlgorithmException e) {
+            LOG.error("NoSuchALgorithmException occurred in getOauthToken {0}", e);
+            throw new RuntimeException(e);
+        } catch (KeyManagementException e) {
+            LOG.error("KeyManagementException occurred in getOauthToken {0}", e);
+            throw new RuntimeException(e);
+        } catch (IOException e) {
+            LOG.error("IOException occurred in getOauthToken {0}"+ e);
+            throw new RuntimeException(e);
+        } catch(Exception e) {
+            LOG.error("Exception occurred in getOauthToken {0}"+ e);
+        }
+        return accessToken;
+    }
+
+
+    public  OkHttpClient getTrustAllCertsClient() throws NoSuchAlgorithmException, KeyManagementException {
+        TrustManager[] trustAllCerts = new TrustManager[]{
+                new X509TrustManager() {
+                    @Override
+                    public void checkClientTrusted(java.security.cert.X509Certificate[] chain, String authType) {
+                    }
+
+                    @Override
+                    public void checkServerTrusted(java.security.cert.X509Certificate[] chain, String authType) {
+                    }
+
+                    @Override
+                    public java.security.cert.X509Certificate[] getAcceptedIssuers() {
+                        return new java.security.cert.X509Certificate[]{};
+                    }
+                }
+        };
+
+        SSLContext sslContext = SSLContext.getInstance(SSL);
+        sslContext.init(null, trustAllCerts, new java.security.SecureRandom());
+
+        OkHttpClient.Builder newBuilder = new OkHttpClient.Builder();
+        newBuilder.sslSocketFactory(sslContext.getSocketFactory(), (X509TrustManager) trustAllCerts[0]);
+        OkHttpClient.Builder builder = newBuilder.hostnameVerifier((hostname, session) -> true);
+        return newBuilder.build();
+    }
+
+    public String createAepRequestBody(String headerSchemaId, String imsOrgId, String dataSetId, String flowId, String bodySchemaId, JsonObject bodyJsonObject) {
+        JsonObject jsonObject = new JsonObject();
+        try {
+            JsonObject schemaRefHeader = new JsonObject();
+            schemaRefHeader.addProperty(ID,headerSchemaId);
+            schemaRefHeader.addProperty(CONTENTTYPE,APPLICATION_VND);
+
+            JsonObject header = new JsonObject();
+            header.add(SCHEMA_REF, schemaRefHeader);
+            header.addProperty(IMS_ORG_ID, imsOrgId);
+            header.addProperty(DATASET_ID, dataSetId);
+            header.addProperty(FLOW_ID, flowId);
+
+            JsonObject schemaRefBody = new JsonObject();
+            schemaRefBody.addProperty(ID,bodySchemaId);
+            schemaRefBody.addProperty(CONTENTTYPE,APPLICATION_VND);
+
+            JsonObject xdmMeta = new JsonObject();
+            xdmMeta.add(SCHEMA_REF, schemaRefBody);
+
+            JsonObject xdmEntity = new JsonObject();
+
+            for(Map.Entry<String, JsonElement> entry : bodyJsonObject.entrySet()) {
+                String key = entry.getKey();
+                String value = entry.getValue().toString().replace("[","").replace("]","");
+                value = value.replace("\"","");
+                xdmEntity.addProperty(key, value);
+            }
+
+            xdmEntity.addProperty(EVENT_TYPE, REGISTER_CLICK);
+            JsonObject body = new JsonObject();
+            body.add(XDM_META, xdmMeta);
+            body.add(XDM_ENTITY, xdmEntity);
+
+            jsonObject.add(HEADER,header);
+            jsonObject.add(BODY,body);
+            LOG.info("createAepRequestBody() :: AEP RequestBody"+ jsonObject.toString());
+        } catch (Exception e) {
+            LOG.error("Exception occurred in createAepRequestBody {0}", e);
+        }
+
+        return jsonObject.toString();
+    }
+
+}
