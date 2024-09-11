@@ -6,10 +6,6 @@ import com.adobe.granite.workflow.exec.WorkItem;
 import com.adobe.granite.workflow.exec.WorkflowProcess;
 import com.adobe.granite.workflow.metadata.MetaDataMap;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.jackrabbit.api.security.user.Authorizable;
-import org.apache.jackrabbit.api.security.user.Group;
-import org.apache.jackrabbit.api.security.user.User;
-import org.apache.jackrabbit.api.security.user.UserManager;
 import org.apache.sling.api.resource.ValueMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,160 +24,192 @@ import org.osgi.service.component.annotations.Component;
 import org.osgi.service.component.annotations.Reference;
 
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Properties;
 import java.io.InputStream;
-import javax.jcr.RepositoryException;
 import java.io.IOException;
 
+import com.colonialfirststate.helper.api.CFSEnviromentUse;
+
 @Component(service = WorkflowProcess.class,
-        property = {"process.label=Email Workflow Process" })
+        property = {"process.label=Email Workflow Process"})
 public class SendEmailWorkflow implements WorkflowProcess {
 
-  protected final Logger logger = LoggerFactory.getLogger(SendEmailWorkflow.class);
+    protected final Logger logger = LoggerFactory.getLogger(SendEmailWorkflow.class);
 
-  private static final String ASSETPATH_EMAIL_PROPERTIES = "/content/dam/cfs-winged/documents/email/email.properties";
+    private static final String ASSETPATH_EMAIL_PROPERTIES = "/content/dam/cfs-winged/documents/email/email.properties";
 
-  @Reference
-  private MessageGatewayService messageGatewayService;
+    @Reference
+    private MessageGatewayService messageGatewayService;
 
-  @Reference
-  private ResourceResolverFactory resolverFactory;
+    @Reference
+    private ResourceResolverFactory resolverFactory;
 
-  @Override
-  public void execute(WorkItem workItem, WorkflowSession wfSession, MetaDataMap metaDataMap) throws WorkflowException {
-    logger.info("Email Workflow Started");
-    ResourceResolver resolver = null;
-    JSONObject jsonResponse = new JSONObject();
-    boolean sent = false;
-    try {
-      resolver = wfSession.adaptTo(ResourceResolver.class);
-      String subject = StringUtils.EMPTY;
-      String emailTo = StringUtils.EMPTY;
-      String emailBodyTemplate = StringUtils.EMPTY;
-      String status = "Pending"; // Status for the email subject
+    @Reference
+    private CFSEnviromentUse cfsEnviromentUse;  // Reference to your run mode helper class
 
-      if (resolver != null) {
-        Resource resource = resolver.getResource(ASSETPATH_EMAIL_PROPERTIES);
-        if (resource != null) {
-          Asset asset = resource.adaptTo(Asset.class);
-          InputStream inputStream = asset.getOriginal().getStream();
-          if (inputStream != null) {
-            Properties properties = new Properties();
-            properties.load(inputStream);
-            subject = properties.getProperty("email.subject");
-            emailBodyTemplate = properties.getProperty("email.body");
-            emailTo = properties.getProperty("email.to");
-            logger.info("email.subject->" + subject);
-            logger.info("email.body->" + emailBodyTemplate);
-            logger.info("email.to->" + emailTo);
-          }
-        }
-      }
+    @Override
+    public void execute(WorkItem workItem, WorkflowSession wfSession, MetaDataMap metaDataMap) throws WorkflowException {
+        logger.info("Email Workflow started");
 
-      String path = workItem.getWorkflowData().getPayload().toString();
+        ResourceResolver resolver = null;
+        JSONObject jsonResponse = new JSONObject();
+        boolean sent = false;
 
-      // Handle user groups
-      String[] recipients = getRecipients(emailTo, resolver);
-      sendEmail(subject, emailBodyTemplate, status, workItem, recipients, path);
-      sent = true;
-      jsonResponse.put("result", sent ? "done" : "something went wrong");
-
-      logger.error("Payload path: {}", path);
-      String args = metaDataMap.get("PROCESS_ARGS", String.class);
-      logger.error("Process args: {}", args);
-
-    } catch (JSONException | IOException e) {
-      logger.error("Exception occurred");
-    } catch (Exception e) {
-      logger.error("Exception occurred");
-    }
-  }
-
-  private String[] getRecipients(String emailTo, ResourceResolver resolver) {
-    // Split recipients and handle group logic
-    List<String> recipientList = new ArrayList<>();
-    String[] emails = emailTo.split(";");
-
-    for (String email : emails) {
-      if (email.startsWith("group:")) {
-        String groupName = email.substring(6);
         try {
-          UserManager userManager = resolver.adaptTo(UserManager.class);
-          if (userManager != null) {
-            Authorizable authorizable = userManager.getAuthorizable(groupName);
-            if (authorizable instanceof Group) {
-              Group group = (Group) authorizable;
-              Iterator<Authorizable> members = group.getMembers();
-              while (members.hasNext()) {
-                Authorizable member = members.next();
-                if (member instanceof User) {
-                  Resource profileResource = resolver.getResource(member.getPath()+"/profile");
-                  if(profileResource != null){
-                    ValueMap profileProps = profileResource.adaptTo(ValueMap.class);
-                    if(profileProps != null){
-                      String memberEmail = profileProps.get("email", String.class);
-                      if (StringUtils.isNotBlank(memberEmail)) {
-                        recipientList.add(memberEmail);
-                      }
-                    }
-                  }
-                }
-              }
+            resolver = wfSession.adaptTo(ResourceResolver.class);
+            if (resolver == null) {
+                logger.error("ResourceResolver is null, cannot proceed.");
+                return;
             }
-          } else {
-            logger.error("UserManager adaptation failed for resolver");
-          }
-        } catch (RepositoryException e) {
-          logger.error("Error while fetching recipients from group: {}", groupName, e);
+
+            logger.info("Retrieving email properties from {}", ASSETPATH_EMAIL_PROPERTIES);
+            String subject = StringUtils.EMPTY;
+            String emailTo = StringUtils.EMPTY;
+            String emailBodyTemplate = StringUtils.EMPTY;
+
+            Resource resource = resolver.getResource(ASSETPATH_EMAIL_PROPERTIES);
+            if (resource != null) {
+                Asset asset = resource.adaptTo(Asset.class);
+                if (asset != null) {
+                    InputStream inputStream = asset.getOriginal().getStream();
+                    if (inputStream != null) {
+                        Properties properties = new Properties();
+                        properties.load(inputStream);
+                        subject = properties.getProperty("email.subject");
+                        emailBodyTemplate = properties.getProperty("email.body");
+                        emailTo = properties.getProperty("email.to");
+
+                        logger.info("Loaded email properties - Subject: {}, To: {}, Body: {}", subject, emailTo, emailBodyTemplate);
+                    } else {
+                        logger.error("InputStream for email properties is null.");
+                    }
+                } else {
+                    logger.error("Asset could not be adapted.");
+                }
+            } else {
+                logger.error("Email properties resource is null.");
+            }
+
+            // Fetch the path from workflow payload
+            String path = workItem.getWorkflowData().getPayload().toString();
+            logger.info("Workflow payload path: {}", path);
+
+            // Fetch the prefixed path based on the run mode
+            String prefixedPath = getPrefixedPath(path);
+            logger.info("Prefixed payload path: {}", prefixedPath);
+
+            // Handle individual recipients
+            String[] recipients = getRecipients(emailTo);
+            if (recipients.length == 0) {
+                logger.warn("No recipients found, skipping email sending.");
+                return;
+            }
+
+            logger.info("Sending email to recipients: {}", String.join(", ", recipients));
+            sendEmail(subject, emailBodyTemplate, "Pending", workItem, recipients, prefixedPath);
+            sent = true;
+            jsonResponse.put("result", sent ? "done" : "something went wrong");
+
+            logger.info("Email Workflow completed successfully.");
+
+        } catch (JSONException e) {
+            logger.error("JSON exception occurred", e);
+        } catch (IOException e) {
+            logger.error("IOException occurred while loading email properties", e);
+        } catch (EmailException e) {
+            logger.error("EmailException occurred", e);
+        } catch (Exception e) {
+            logger.error("An unexpected exception occurred", e);
+        } finally {
+            if (resolver != null) {
+                resolver.close();
+            }
         }
-      } else {
-        if (StringUtils.isNotBlank(email)) {
-          recipientList.add(email.trim());
+    }
+
+    // Method to prefix the run mode domain with the path
+    private String getPrefixedPath(String path) {
+        logger.info("Fetching run mode and constructing prefixed path.");
+        String runMode = cfsEnviromentUse.getRunMode();
+        String domain = getDomainForRunMode(runMode);  // Fetch the domain based on run mode
+        logger.info("Run mode: {}, Domain: {}", runMode, domain);
+        return domain + path;
+    }
+
+    // Method to get the domain for the current run mode
+    private String getDomainForRunMode(String runMode) {
+        logger.debug("Fetching domain for run mode: {}", runMode);
+        switch (runMode) {
+            case "author":
+                return "https://author.example.com";
+            case "prod":
+                return "https://www.example.com";
+            case "stage":
+                return "https://stage.example.com";
+            case "dev":
+            default:
+                return "https://dev01.example.com";
         }
-      }
     }
-    return recipientList.toArray(new String[0]);
-  }
 
-  private void sendEmail(String subject, String emailBodyTemplate, String status, WorkItem item, String[] recipients, String payLoadPath) throws EmailException {
-    try {
-      Email email = new HtmlEmail();
+    // Method to handle individual email recipients
+    private String[] getRecipients(String emailTo) {
+        logger.info("Parsing email recipients from: {}", emailTo);
+        List<String> recipientList = new ArrayList<>();
+        String[] emails = emailTo.split(";");
 
-      // Add recipients
-      for (String recipient : recipients) {
-        email.addTo(recipient);
-      }
-      email.setSubject(subject);
-      String emailPadding = "<hr style='border:1px solid #cccccc;'>";
-      String msgBody = "<html><body>" +
-              emailBodyTemplate + "<br/>" +
-              emailPadding + "<br/>" +
-              "<strong>Workflow:</strong> " + item.getWorkflow().getWorkflowModel().getTitle() + "<br/>" +
-              "<strong>Start Time:</strong> " + item.getWorkflow().getTimeStarted() + "<br/>" +
-              "<strong>Workflow Initiator:</strong> " + item.getWorkflow().getInitiator() + "<br/>" +
-              emailPadding + "<br/>" +
-              "<strong>Content:</strong> <a href='" + payLoadPath + "'>" + payLoadPath + "</a><br/><br/>" +
-              emailPadding + "<br/>" +
-              "<i>This is an automatically generated message. Please do not reply.</i>" +
-              emailPadding +
-              "</body></html>";
+        for (String email : emails) {
+            if (StringUtils.isNotBlank(email)) {
+                recipientList.add(email.trim());
+                logger.info("Added recipient: {}", email.trim());
+            }
+        }
 
-      // Set the HTML message body
-      ((HtmlEmail) email).setHtmlMsg(msgBody);
-
-      // Send email via Message Gateway
-      MessageGateway<Email> messageGateway = messageGatewayService.getGateway(HtmlEmail.class);
-      if (messageGateway != null) {
-        logger.info("Sending out email");
-        messageGateway.send(email);
-        logger.info("Email sent successfully");
-      } else {
-        logger.error("The message gateway could not be retrieved.");
-      }
-    } catch (Exception e) {
-      logger.error("Error while sending email", e);
+        logger.info("Total recipients: {}", recipientList.size());
+        return recipientList.toArray(new String[0]);
     }
-  }
+
+    private void sendEmail(String subject, String emailBodyTemplate, String status, WorkItem item, String[] recipients, String payLoadPath) throws EmailException {
+        logger.info("Preparing to send email.");
+        try {
+            Email email = new HtmlEmail();
+
+            // Add recipients
+            for (String recipient : recipients) {
+                email.addTo(recipient);
+            }
+            email.setSubject(subject);
+
+            String emailPadding = "<hr style='border:1px solid #cccccc;'>";
+            String msgBody = "<html><body>" +
+                    emailBodyTemplate + "<br/>" +
+                    emailPadding + "<br/>" +
+                    "<strong>Workflow:</strong> " + item.getWorkflow().getWorkflowModel().getTitle() + "<br/>" +
+                    "<strong>Start Time:</strong> " + item.getWorkflow().getTimeStarted() + "<br/>" +
+                    "<strong>Workflow Initiator:</strong> " + item.getWorkflow().getInitiator() + "<br/>" +
+                    emailPadding + "<br/>" +
+                    "<strong>Content:</strong> <a href='" + payLoadPath + "'>" + payLoadPath + "</a><br/><br/>" +
+                    emailPadding + "<br/>" +
+                    "<i>This is an automatically generated message. Please do not reply.</i>" +
+                    emailPadding +
+                    "</body></html>";
+
+            // Set the HTML message body
+            ((HtmlEmail) email).setHtmlMsg(msgBody);
+
+            // Send email via Message Gateway
+            MessageGateway<Email> messageGateway = messageGatewayService.getGateway(HtmlEmail.class);
+            if (messageGateway != null) {
+                logger.info("Sending out email.");
+                messageGateway.send(email);
+                logger.info("Email sent successfully.");
+            } else {
+                logger.error("The message gateway could not be retrieved.");
+            }
+        } catch (Exception e) {
+            logger.error("Error while sending email", e);
+            throw new EmailException("Failed to send email", e);
+        }
+    }
 }
