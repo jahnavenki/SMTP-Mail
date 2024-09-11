@@ -12,6 +12,13 @@
 }
 
 
-email.subject=Workflow is pending for your approval
-email.body=Please check the workflow as it's pending for your approval.
-email.to=venkateswara.goud.lakkasani@cfs.com.au;kirill.frolov@cfs.com.au
+eemail.subject=Workflow is pending for your approval
+email.body=Hello,<br/><br/>Check the page activate workflow as it's pending for your approval.<br/><br/>
+<strong>Workflow:</strong> ${workflowTitle}<br/>
+<strong>Start Time:</strong> ${startTime}<br/>
+<strong>Workflow Initiator:</strong> ${initiator}<br/><br/>
+<strong>Content Path:</strong> <a href="${pagePath}">${pagePath}</a><br/><br/>
+This is an automatically generated message. Please do not reply.
+email.to=venkateswara.goud.lakkasani@cfs.com.au;kirill.frolov@cfs.com.au;ayush.agarwal@cfs.com.au;mounika.pothurai@cfs.com.au;ullas.reddy1@cfs.com.au
+
+
