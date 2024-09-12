@@ -1,41 +1,95 @@
-https://www.albinsblog.com/2023/09/support-custom-run-modes-in-aem-as-a-cloud-env-specific-values.html
-
-
-
-import javax.servlet.Servlet;
-import javax.servlet.ServletException;
-import java.io.IOException;
-
-@Component(service = { Servlet.class }, property = {
-        "sling.servlet.paths=/services/endpoint", 
-        "sling.servlet.methods=GET" })
-@Designate(ocd = EndpointServiceConfiguration.class)
-public class EndpointService extends SlingSafeMethodsServlet {
-    private static final long serialVersionUID = 7699176851252742022L;
-
-    private String endpoint;
-
-    @Override
-    protected void doGet(SlingHttpServletRequest request, SlingHttpServletResponse response)
-            throws ServletException, IOException {
-        response.getWriter().write("endpoint: " + endpoint);
-    }
-
-    @Activate
-    @Modified
-    protected void activate(EndpointServiceConfiguration config) {
-        this.endpoint = config.serviceURL();
-    }
-}
-
 package com.example.core.config;
 
 import org.osgi.service.metatype.annotations.AttributeDefinition;
 import org.osgi.service.metatype.annotations.ObjectClassDefinition;
 
-@ObjectClassDefinition(name = "Endpoint Servlet Configuration", description = "Configuration for the Endpoint Servlet")
-public @interface EndpointServiceConfiguration {
+@ObjectClassDefinition(name = "CFS Project Environment Configuration", description = "Environment-specific configuration for CFS Project")
+public @interface CFSEnvironmentConfiguration {
 
-    @AttributeDefinition(name = "Service URL", description = "Configure the service URL endpoint")
-    String serviceURL() default "";
+    @AttributeDefinition(name = "Dev01 Environment URL", description = "URL for Dev01 Author Environment")
+    String dev01AuthorUrl() default "https://author-p110482-e1077234.adobeaemcloud.com";
+
+    @AttributeDefinition(name = "Dev02 Environment URL", description = "URL for Dev02 Author Environment")
+    String dev02AuthorUrl() default "https://author-p110482-e1080535.adobeaemcloud.com";
+
+    @AttributeDefinition(name = "Dev03 Environment URL", description = "URL for Dev03 Author Environment")
+    String dev03AuthorUrl() default "https://author-p110482-e1139939.adobeaemcloud.com";
+
+    @AttributeDefinition(name = "Stage Environment URL", description = "URL for Stage Author Environment")
+    String stageAuthorUrl() default "https://author-p110482-e1080620.adobeaemcloud.com";
+
+    @AttributeDefinition(name = "Prod Environment URL", description = "URL for Prod Author Environment")
+    String prodAuthorUrl() default "https://author-p110482-e1080534.adobeaemcloud.com";
+}
+...................................................
+package com.example.core.servlets;
+
+import org.apache.sling.api.servlets.SlingSafeMethodsServlet;
+import org.apache.sling.api.SlingHttpServletRequest;
+import org.apache.sling.api.SlingHttpServletResponse;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Activate;
+import org.osgi.service.component.annotations.Modified;
+import org.osgi.service.component.annotations.Reference;
+import org.osgi.service.metatype.annotations.Designate;
+
+import javax.servlet.Servlet;
+import javax.servlet.ServletException;
+import java.io.IOException;
+
+import com.example.core.config.CFSEnvironmentConfiguration;
+
+@Component(service = { Servlet.class }, property = {
+        "sling.servlet.paths=/services/environment-endpoint", 
+        "sling.servlet.methods=GET" })
+@Designate(ocd = CFSEnvironmentConfiguration.class)
+public class EnvironmentEndpointServlet extends SlingSafeMethodsServlet {
+    private static final long serialVersionUID = 1L;
+
+    private String dev01Url;
+    private String dev02Url;
+    private String dev03Url;
+    private String stageUrl;
+    private String prodUrl;
+
+    @Activate
+    @Modified
+    protected void activate(CFSEnvironmentConfiguration config) {
+        this.dev01Url = config.dev01AuthorUrl();
+        this.dev02Url = config.dev02AuthorUrl();
+        this.dev03Url = config.dev03AuthorUrl();
+        this.stageUrl = config.stageAuthorUrl();
+        this.prodUrl = config.prodAuthorUrl();
+    }
+
+    @Override
+    protected void doGet(SlingHttpServletRequest request, SlingHttpServletResponse response)
+            throws ServletException, IOException {
+
+        String environment = request.getParameter("env");
+        String environmentUrl;
+
+        switch (environment) {
+            case "dev01":
+                environmentUrl = dev01Url;
+                break;
+            case "dev02":
+                environmentUrl = dev02Url;
+                break;
+            case "dev03":
+                environmentUrl = dev03Url;
+                break;
+            case "stage":
+                environmentUrl = stageUrl;
+                break;
+            case "prod":
+                environmentUrl = prodUrl;
+                break;
+            default:
+                environmentUrl = "Unknown Environment";
+                break;
+        }
+
+        response.getWriter().write("Environment URL: " + environmentUrl);
+    }
 }
