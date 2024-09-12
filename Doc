@@ -1,1 +1,41 @@
 https://www.albinsblog.com/2023/09/support-custom-run-modes-in-aem-as-a-cloud-env-specific-values.html
+
+
+
+import javax.servlet.Servlet;
+import javax.servlet.ServletException;
+import java.io.IOException;
+
+@Component(service = { Servlet.class }, property = {
+        "sling.servlet.paths=/services/endpoint", 
+        "sling.servlet.methods=GET" })
+@Designate(ocd = EndpointServiceConfiguration.class)
+public class EndpointService extends SlingSafeMethodsServlet {
+    private static final long serialVersionUID = 7699176851252742022L;
+
+    private String endpoint;
+
+    @Override
+    protected void doGet(SlingHttpServletRequest request, SlingHttpServletResponse response)
+            throws ServletException, IOException {
+        response.getWriter().write("endpoint: " + endpoint);
+    }
+
+    @Activate
+    @Modified
+    protected void activate(EndpointServiceConfiguration config) {
+        this.endpoint = config.serviceURL();
+    }
+}
+
+package com.example.core.config;
+
+import org.osgi.service.metatype.annotations.AttributeDefinition;
+import org.osgi.service.metatype.annotations.ObjectClassDefinition;
+
+@ObjectClassDefinition(name = "Endpoint Servlet Configuration", description = "Configuration for the Endpoint Servlet")
+public @interface EndpointServiceConfiguration {
+
+    @AttributeDefinition(name = "Service URL", description = "Configure the service URL endpoint")
+    String serviceURL() default "";
+}
