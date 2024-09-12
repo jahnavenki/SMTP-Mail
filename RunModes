@@ -35,40 +35,26 @@ https://author-p110482-e1080534.adobeaemcloud.com -prod
 
 package au.com.cfs.winged.core.util;
 
-import java.util.Set;
-
 import org.apache.sling.settings.SlingSettingsService;
-
-import com.adobe.cq.sightly.WCMUsePojo;
 import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
 
-@Component(service = CFSRunModesUse.class)
-public class CFSRunModesUse extends WCMUsePojo {
+@Component(service = CFSRunModesService.class)
+public class CFSRunModesService {
 
-    private boolean isAuthor = false;
-    private String currentRunMode="Unknown";
-
-    @Override
-    public final void activate() throws Exception {
-        SlingSettingsService settingService = getSlingScriptHelper()
-                .getService(SlingSettingsService.class);
-        if (settingService != null) {
-            Set<String> runModes = settingService.getRunModes();
-            if (runModes.contains("author")) {
-                isAuthor = true;
-                currentRunMode ="author";
-            }
-        }
-    }
-    public final boolean isCheckAuthor() {
-        return isAuthor;
-    }
+    @Reference
+    private SlingSettingsService settingService;
 
     public String getRunMode() {
-        return currentRunMode;
+        if (settingService != null) {
+            if (settingService.getRunModes().contains("author")) {
+                return "author";
+            }
+        }
+        return "Unknown";
     }
 
-    public void setRunMode(String runMode) {
-        this.currentRunMode = runMode;
+    public boolean isAuthor() {
+        return settingService != null && settingService.getRunModes().contains("author");
     }
 }
