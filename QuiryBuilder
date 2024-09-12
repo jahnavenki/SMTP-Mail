@@ -1,0 +1,10 @@
+group.3_group.path=/content/cfs-winged/au/en/about-us
+group.3_group.path.self=true
+group.3_group.type=cq:Page
+group.3_group.1_property=@jcr:content/hideInNav
+group.3_group.1_property.operation=not
+group.3_group.1_property.value=exists
+group.3_group.2_property=@jcr:content/jcr:created
+group.3_group.2_property.operation=exists
+group.3_group.1_path.operation=not
+group.1_group.1_path.value=exists
