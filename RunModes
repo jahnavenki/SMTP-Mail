@@ -58,3 +58,49 @@ public class CFSRunModesService {
         return settingService != null && settingService.getRunModes().contains("author");
     }
 }
+............................................................
+package au.com.cfs.winged.core.util;
+
+import org.apache.sling.settings.SlingSettingsService;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
+
+import java.util.Set;
+
+@Component(service = CFSRunModesService.class)
+public class CFSRunModesService {
+
+    @Reference
+    private SlingSettingsService settingService;
+
+    // Method to get all run modes
+    public Set<String> getRunModes() {
+        if (settingService != null) {
+            return settingService.getRunModes();
+        }
+        return null;
+    }
+
+    // Method to get a specific run mode
+    public String getRunMode() {
+        if (settingService != null) {
+            if (settingService.getRunModes().contains("author")) {
+                return "author";
+            }
+        }
+        return "Unknown";
+    }
+
+    // Method to check if current run mode is author
+    public boolean isAuthor() {
+        return settingService != null && settingService.getRunModes().contains("author");
+    }
+}
+......................
+
+        Set<String> runModes = cfsRunModesService.getRunModes();
+        if (runModes != null) {
+            logger.info("Active run modes: {}", String.join(", ", runModes));  // Log all the active run modes
+        } else {
+            logger.error("Run modes could not be retrieved.");
+        }
